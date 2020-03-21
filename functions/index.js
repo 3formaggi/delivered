@@ -72,6 +72,16 @@ exports.completeProfile = functions.https.onCall((data, context) => {
 
             }
 
+            if(("birth" in doc.data() || "birth" in data) &&
+                ("email" in doc.data() || "email" in data) &&
+                ("fname" in doc.data() || "fname" in data) &&
+                ("lname" in doc.data() || "lname" in data) &&
+                ("number" in doc.data() || "number" in data) &&
+                ("street" in doc.data() || "street" in data) &&
+                ("zip" in doc.data() || "zip" in data)){
+                data.complete = true;
+            }
+
 
 
             admin.firestore().collection("users").doc(context.auth.uid).set(data,{ merge:true })
