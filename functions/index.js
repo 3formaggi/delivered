@@ -23,7 +23,7 @@ exports.createUserDoc = functions.auth.user().onCreate((user) => {
 
 
 exports.completeProfile = functions.https.onCall((data, context) => {
-    return new Promise(async function(resolve,reject){
+    return new Promise(async function(resolve){
 
         if(!context.auth.uid){
             resolve('not authenticated');
@@ -110,15 +110,19 @@ exports.completeProfile = functions.https.onCall((data, context) => {
 
         } catch (error) {
             console.error(error);
+            resolve('internal error');
         }
     });
 });
 
 exports.telephonerGetTasks = functions.https.onCall((data, context) => {
-    //check if prams set
-    //filtering and ordering not working
-    return new Promise(async function (resolve, reject) {
+    return new Promise(async function (resolve) {
         try {
+
+            if(!data.fname || !data.lname || !data.zip){
+                resolve({state:"error",error:"params not complete"});
+                return;
+            }
 
             if (!context.auth.uid) {
                 resolve({state: "error", error: 'not authenticated'});
@@ -126,7 +130,7 @@ exports.telephonerGetTasks = functions.https.onCall((data, context) => {
             }
 
 
-            let telephonerDoc = await admin.firestore().collection('users').doc(context.auth.uid).get(); //"mC6Qd8sp61Mw4DGLpnVkSMV7jvI3"
+            let telephonerDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
             if (!telephonerDoc.exists) {
                 resolve({state: "error", error: "doc not found"});
                 return;
@@ -134,7 +138,7 @@ exports.telephonerGetTasks = functions.https.onCall((data, context) => {
             if (telephonerDoc.data().type !== "telephoner") {
                 resolve({state: "error", error: "shopper"});
             } else {
-                let tasksSnapshot = await admin.firestore().collection('tasks').where("fname","==",data.fname).where("lname","==",data.lname).where("zip", "==", data.zip).orderBy("delivered").orderBy('date', "desc").get(); //.orderBy("delivered").orderBy('date', "desc")
+                let tasksSnapshot = await admin.firestore().collection('tasks').where("fname","==",data.fname).where("lname","==",data.lname).where("zip", "==", data.zip).orderBy("delivered").orderBy('date', "desc").get();
                 if (tasksSnapshot.empty) {
                     resolve({state: "ok", data: {}});
                 }
