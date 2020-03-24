@@ -1,7 +1,8 @@
 const functions = require('firebase-functions');
-const firebaseAdmin = require('firebase-admin');
+const admin = require('firebase-admin');
 
-const admin = firebaseAdmin.initializeApp();
+admin.initializeApp();
+//const admin =
 
 //bei sehr ähnlichen Teilen in verschieden cloud Functions, wurde der Teil jeweils nur einaml kommentiert
 
@@ -215,7 +216,7 @@ exports.telephonerAddTask = functions.https.onCall((data, context) => { //Funkti
                     if(typeof item.item !== "string" || typeof item.amount !== "string" || (typeof item.info !== "string" && typeof item.info !== "undefined")){
                         resolve({state:"error",error:"items wrong formatted"});
                     }
-                    if((Object.keys(item).length === 2 && (!item.includes("item") || !item.includes("amount"))) || (Object.keys(item).length === 3 && (!item.includes("item") || !item.includes("amount") || !item.includes("info")))){
+                    if((Object.keys(item).length === 2 && (!item.item || !item.amount)) || (Object.keys(item).length === 3 && (!item.item || !item.amount || !item.info))){
                         resolve({state:"error",error:"items wrong formatted2"});
 
                     }
@@ -235,7 +236,31 @@ exports.telephonerAddTask = functions.https.onCall((data, context) => { //Funkti
             if (telephonerDoc.data().type !== "telephoner") {
                 resolve({state: "error", error: "type"});
             } else {
-                resolve('ok');
+                let taskDoc = {
+                    birth: admin.firestore.Timestamp.fromDate(new Date('December 10, 1815')),
+                    country: data.country.toLowerCase(),
+                    date: admin.firestore.FieldValue.serverTimestamp(),
+                    delivered: false,
+                    items: data.items,
+                    fname: data.fname,
+                    lname: data.lname,
+                    number: data.number,
+                    over16: data.over16,
+                    over18: data.over18,
+                    payed: false,
+                    phone: data.phone,
+                    street: data.street,
+                    zip: data.zip
+                };
+
+                if(data.addressInfo){
+                    taskDoc.addressInfo = data.addressInfo;
+                }
+
+                admin.firestore().collection('tasks').add(taskDoc)
+                    .then(function(){
+                        resolve({state: "ok"});
+                    });
 
             }
 
@@ -257,6 +282,8 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
                 resolve({state: "error", error: 'not authenticated'});
                 return;
             }
+
+            let userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
             
             if(!data.zip || typeof data.over16 === "undefined" || typeof data.over18 === "undefined"){
                 resolve({state:"error",error:"request not complete"});
@@ -295,11 +322,14 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
                     snapshots.forEach(function(snapshot){
                         if(!snapshot.empty){
                             snapshot.forEach(function(doc){
+                                console.log(doc.data().street);
                                 temp.street = doc.data().street;
                                 temp.zip = doc.data().zip;
+
+                                result.push(temp);
+                                temp = {};
                             });
-                            result.push(temp);
-                            temp = {};
+
                         }
 
 
@@ -314,5 +344,7 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
         }
     });
 });
+
+//userAcceptTask
 
 
