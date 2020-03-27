@@ -70,6 +70,11 @@ exports.completeProfile = functions.https.onCall((data, context) => { //nach der
                 return;
             }
 
+            if(doc.data().type !== "shopper"){
+                resolve('wrong user type');
+                return;
+            }
+
             for(let i in data){
                 if(i in doc.data()){ //bereits gesetzte Daten können mit dieser Funktion nicht nochmal bearbeitet werden
                     resolve("cant't edit " + i);
@@ -99,6 +104,8 @@ exports.completeProfile = functions.https.onCall((data, context) => { //nach der
                 ("zip" in doc.data() || "zip" in data)){
                 data.complete = true;
             }
+
+            data.birth = admin.firestore.Timestamp.fromDate(new Date(data.birth * 1000));
 
 
 
@@ -180,7 +187,7 @@ exports.telephonerGetTasks = functions.https.onCall((data, context) => { //die T
     });
 });
 
-exports.telephonerAddTask = functions.https.onCall((data, context) => { //Funktion zum Eintragen eines neuen Auftrags in die Datenbank //diese Funktion ist leider noch nicht fertig
+exports.telephonerAddTask = functions.https.onCall((data, context) => { //Funktion zum Eintragen eines neuen Auftrags
     return new Promise(async function (resolve) {
         try {
 
@@ -235,9 +242,9 @@ exports.telephonerAddTask = functions.https.onCall((data, context) => { //Funkti
             }
             if (telephonerDoc.data().type !== "telephoner") {
                 resolve({state: "error", error: "type"});
-            } else {
+            } else { //setzen des neuen Auftrags
                 let taskDoc = {
-                    birth: admin.firestore.Timestamp.fromDate(new Date('December 10, 1815')),
+                    birth: admin.firestore.Timestamp.fromDate(new Date(data.birth * 1000)),
                     country: data.country.toLowerCase(),
                     date: admin.firestore.FieldValue.serverTimestamp(),
                     delivered: false,
@@ -273,8 +280,7 @@ exports.telephonerAddTask = functions.https.onCall((data, context) => { //Funkti
     });
 });
 
-exports.userGetTasks = functions.https.onCall((data, context) => {
-    //send country and remove over16/18 param
+exports.userGetTasks = functions.https.onCall((data, context) => { //Funktion für den Nutzer, zum Anzeigen der verfügbaren Aufträge
     return new Promise(async function (resolve) {
         try {
 
@@ -297,11 +303,9 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
 
 
 
-               data.zip.forEach(function(element){
+               data.zip.forEach(function(element){ //laden der Aufgaben abhängig vom Alter
 
                    if(typeof element === "number" && element.toString().length === 5) {
-                        //(new Date(Date.now() - userDoc.data().birth.toDate().getTime()).getUTCFullYear() - 1970) >= 18
-                        //if(data.over18){
                        if((new Date(Date.now() - userDoc.data().birth.toDate().getTime()).getUTCFullYear() - 1970) >= 18){
                             promises.push(admin.firestore().collection('tasks').where('zip', '==', element).get());
                         }else if((new Date(Date.now() - userDoc.data().birth.toDate().getTime()).getUTCFullYear() - 1970) >= 16){
@@ -313,7 +317,6 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
                         resolve({state:"error",error:"zip invalid"});
                     }
                });
-                //});
 
             if(promises === []){
                 return;
@@ -321,13 +324,14 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
 
             let result = [];
             let temp = {};
-            Promise.all(promises)
+            Promise.all(promises) //Auflösen der Promises
                 .then(function(snapshots){
                     snapshots.forEach(function(snapshot){
                         if(!snapshot.empty){
                             snapshot.forEach(function(doc){
                                 temp.street = doc.data().street;
                                 temp.zip = doc.data().zip;
+                                temp.id = doc.id;
 
                                 result.push(temp);
                                 temp = {};
@@ -337,7 +341,6 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
 
 
                     });
-                    console.log(result);
                     resolve(result);
                 });
 
@@ -348,6 +351,100 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
     });
 });
 
-//userAcceptTask
+exports.userAcceptTasks = functions.https.onCall((data, context) => { //Funktion zum Annehmen eines Auftrags
+    return new Promise(async function (resolve) {
+        try {
 
+            if (!context.auth.uid) {
+                resolve({state: "error", error: 'not authenticated'});
+                return;
+            }
+
+
+            if (!data.id || typeof data.id !== "string") {
+                resolve({state: "error", error: "request not complete or not correct built up"});
+                return;
+            }
+
+
+            let userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+
+            if(userDoc.data().type !== "shopper"){
+                resolve({state:"error",error:"wrong user type"});
+                return;
+            }
+
+            if(!userDoc.data().complete){
+                resolve({state:"error",error:"user not complete"});
+                return;
+            }
+
+            let taskDoc = await admin.firestore().collection('tasks').doc(data.id).get();
+            if(!taskDoc.exists){ //überprüfen, ob die Id (und das zugehörige Dokument) existiert
+                resolve({state:'error',error:'id not found'});
+            }else if(taskDoc.data().shopper){ //überprüfen, ob dem Auftrag schon ein Einkäufer zugeordnet ist
+                resolve({state:"error",error:"already assigned"})
+            }else{
+                admin.firestore().collection('tasks').doc(data.id).set({ //setzen des Einkäufers und der Zeit
+                    shopper: context.auth.uid,
+                    acceptedTimestamp: admin.firestore.FieldValue.serverTimestamp()
+                }, {merge: true})
+                    .then(function(){
+                        resolve({state: "ok"});
+                    });
+            }
+
+
+
+
+        } catch (error) {
+            console.error(error);
+            resolve({state: "error", error: "internal"});
+        }
+
+    });
+});
+
+
+exports.userGetAcceptedTasks = functions.https.onCall((data, context) => { //Funktion zum Abrufen der angenommenen Aufträge
+    return new Promise(async function (resolve) {
+        try {
+
+            if (!context.auth.uid) {
+                resolve({state: "error", error: 'not authenticated'});
+                return;
+            }
+
+            if (data.delivered !== true && data.delivered !== false) {
+                resolve({state: "error", error: 'delivered is not set or has wrong type'});
+                return;
+            }
+
+            admin.firestore().collection('tasks').where("shopper","==",context.auth.uid).where("delivered","==",data.delivered).orderBy("acceptedTimestamp","desc").get()
+                .then(function(snapshot){
+                    if(snapshot.empty){
+                        resolve({state:"ok",data:{}});
+                    }else{
+                        let temp = {};
+                        let result = [];
+                        snapshot.forEach(function(doc){
+                            temp.zip = doc.data().zip;
+                            temp.street = doc.data().street;
+                            temp.number = doc.data().number;
+                            temp.acceptedTimestamp = doc.data().acceptedTimestamp.toDate().getTime();
+
+                            result.push(temp);
+                            temp = {};
+                        });
+                        resolve({state:"ok",data:result});
+                    }
+                });
+
+
+        } catch (error) {
+            console.error(error);
+            resolve({state: "error", error: "internal"});
+        }
+    });
+});
 
