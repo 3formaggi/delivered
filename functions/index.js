@@ -283,33 +283,37 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
                 return;
             }
 
+            
+            if(!data.zip || !Array.isArray(data.zip)){
+                resolve({state:"error",error:"request not complete or not correct built up"});
+                return;
+            }
+
+
             let userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
-            
-            if(!data.zip || typeof data.over16 === "undefined" || typeof data.over18 === "undefined"){
-                resolve({state:"error",error:"request not complete"});
-                return;
-            }
-            
-            if(data.over18 && !data.over16){
-                resolve({state:"error",error:"over 16 can't be false when over 18 is true"});
-                return;
-            }
             
 
             let promises = [];
-            data.zip.forEach(function(element){
-                if(typeof element === "number" && element.toString().length === 5) {
-                    if(data.over18){
-                        promises.push(admin.firestore().collection('tasks').where('zip', '==', element).get());
-                    }else if(data.over16){
-                        promises.push(admin.firestore().collection('tasks').where('zip', '==', element).where('over18','==',false).get());
+
+
+
+               data.zip.forEach(function(element){
+
+                   if(typeof element === "number" && element.toString().length === 5) {
+                        //(new Date(Date.now() - userDoc.data().birth.toDate().getTime()).getUTCFullYear() - 1970) >= 18
+                        //if(data.over18){
+                       if((new Date(Date.now() - userDoc.data().birth.toDate().getTime()).getUTCFullYear() - 1970) >= 18){
+                            promises.push(admin.firestore().collection('tasks').where('zip', '==', element).get());
+                        }else if((new Date(Date.now() - userDoc.data().birth.toDate().getTime()).getUTCFullYear() - 1970) >= 16){
+                            promises.push(admin.firestore().collection('tasks').where('zip', '==', element).where('over18','==',false).get());
+                        }else{
+                            promises.push(admin.firestore().collection('tasks').where('zip', '==', element).where('over16','==',false).get());
+                        }
                     }else{
-                        promises.push(admin.firestore().collection('tasks').where('zip', '==', element).where('over16','==',false).get());
+                        resolve({state:"error",error:"zip invalid"});
                     }
-                }else{
-                    resolve({state:"error",error:"zip invalid"});
-                }
-            });
+               });
+                //});
 
             if(promises === []){
                 return;
@@ -322,7 +326,6 @@ exports.userGetTasks = functions.https.onCall((data, context) => {
                     snapshots.forEach(function(snapshot){
                         if(!snapshot.empty){
                             snapshot.forEach(function(doc){
-                                console.log(doc.data().street);
                                 temp.street = doc.data().street;
                                 temp.zip = doc.data().zip;
 
