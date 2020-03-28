@@ -34,7 +34,7 @@ exports.completeProfile = functions.https.onCall((data, context) => { //nach der
         }
 
         try { //überprüfen der angegebenen Parameter
-            if(data.birth && (typeof data.birth !== "number" || data.birth < 0 || data.birth > Math.round(new Date().getTime() / 1000))){
+            if(data.birth && (typeof data.birth !== "number" || data.birth < 0 || data.birth > Math.round(Date.now() / 1000))){
                 resolve('invalid birth');
                 return;
             }
